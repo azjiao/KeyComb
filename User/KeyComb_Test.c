@@ -27,6 +27,7 @@ int main(void)
     bool bT1_Enb = FALSE, bT2_Enb = FALSE;  //定时器使能。
     bool bLED0Round = FALSE; // LED0 定时亮灭开关。
     uint32_t KeyVal;
+    uint32_t KeyStatusTemp = 0x03000000; //键值暂存，初始化为键盘键值为0释放。
     //板载Key初始化。
     key_Init();
 
@@ -59,14 +60,18 @@ int main(void)
         //测试键盘缓冲区
         KeyVal = KeyBufR(TRUE, &KeyBuf);
         if(KeyVal != 0x0000)        
-            printf("检测到键盘缓冲区有数据：%d\r\n", KeyVal);
-        
-        KeyVal = KeyBufR(FALSE, &KeyBufRelease);
-        if(KeyVal>>16 >=200U)
-        {
-            printf("检测到键盘释放，键值%d按下时间为：%dms\r\n", KeyVal & 0x00FF, KeyVal>>16);
-            KeyVal = KeyBufR(TRUE, &KeyBufRelease);
-        }
+            printf("|键盘缓冲区有数据：0x%x\r\n", KeyVal);
+        if(KeyVal & LONGPR_STATUS<<16)
+            printf("---长按事件：0x%x\r\n", KeyVal);
+        if(Keypad.u32KeyStatus ^ KeyStatusTemp)
+            printf("ss~ss键值状态变化：0x%x\r\n", Keypad.u32KeyStatus);
+        KeyStatusTemp = Keypad.u32KeyStatus;
+//        KeyVal = KeyBufR(FALSE, &KeyBufRelease);
+//        if(KeyVal>>16 >=200U)
+//        {
+//            printf("检测到键盘释放，键值%d按下时间为：%dms\r\n", KeyVal & 0x00FF, KeyVal>>16);
+//            KeyVal = KeyBufR(TRUE, &KeyBufRelease);
+//        }
         
         //bIsWKUP = WKUP_Scan(FALSE);
         if(bIsWKUP)

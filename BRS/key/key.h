@@ -55,16 +55,36 @@ typedef enum {
 #define KEYFILTIME   150U
 //同一个键连续按键的间隔时间，超过此时间才产生下一个键值，否则认为是同一次按键。此时间应大于防抖时间。
 #define KEYSPACETIME    500U
+//按下同一键值超过KEYSPACETIME的时间是否产生重复键值录入缓冲区。TRUE:允许重复，FALSE：只算一次。
+#define ISREPEATKEY    FALSE
+
+//按键状态定义
+//按下
+#define PRESS_STATUS    0x01
+//键盘全释放为0
+#define RELEASE_STATUS    0x02
+//非序列键
+#define NOSEQ_STATUS   0x03
+//长按
+#define LONGPR_STATUS   0x04
+
+
+//长按状态检测时间:2000ms,即2s.
+#define LONGPR_TIME    2000U
+//序列按键独立键值最长按键时间：超过此时间认为不符合要求。
+#define KEYSEQPR_TIME    1000U
 //序列键：序列键间隔时间，只有在此时间内的序列键才认为是组合键，否则不认为是组合键。
-#define KEYSEQTIME    2000U
+#define KEYSEQSPACE_TIME    2000U
 
 //键盘结构
 typedef struct
 {
     uint16_t u16ValSus; //当前键盘状态值(连续状态值).
     uint16_t u16ValOnce; //连续按下同一组键只产生一个值.
+    uint16_t u16KeypadStabTrg; //稳定键值突变。
     uint16_t u16DownTrg;  //键盘按下突变键,其实和u16ValOnce是同一逻辑。
     uint16_t u16UpTrg;  //键盘释放突变键
+    uint32_t u32KeyStatus; //键值状态，低24位是键值(低16位是本来的键值，bit16-bit23是事件)，高8位是状态。
 }KeypadType;
 extern KeypadType Keypad;
 
@@ -101,6 +121,8 @@ uint16_t genKeyCombVal(void);
 //替代单独按键检测函数，可以检测多个按键或单个按键。
 //具有按键防抖功能。
 uint16_t keypadScan(void);
+//键值状态生成。
+void genKeyStatus(void);
 
 //键盘缓冲区FIFO 写操作。
 void KeyBufW(uint32_t KeyVal, bool bNext, KeyBufType* KeyBuf);
