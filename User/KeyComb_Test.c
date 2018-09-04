@@ -27,7 +27,7 @@ int main(void)
     bool bT1_Enb = FALSE, bT2_Enb = FALSE;  //定时器使能。
     bool bLED0Round = FALSE; // LED0 定时亮灭开关。
     uint32_t KeyVal;
-    uint32_t KeyStatusTemp = 0x03000000; //键值暂存，初始化为键盘键值为0释放。
+    uint32_t KeyStatusTemp = 0x0; //键值暂存，初始化为键盘键值为0。
     //板载Key初始化。
     key_Init();
 
@@ -50,28 +50,27 @@ int main(void)
         bool bIsWKUP;
         
         keypadScan();
-        bIsKey0 = Keypad.u16ValOnce == KEY1_KEY0;  //组合：先KEY1后KEY0
-        //bIsKey1 = Keypad.u16ValSus == KEY0_KEY1;  //组合：KEY0+KEY1,无顺序要求
-        //按下Key0+Wkup，且Wkup后按下。
-        bIsWKUP = Keypad.u16ValOnce == KEY0_WKUP;
-        //bIsKey0 = key0_Scan(TRUE);
-        bIsKey1 = key1_Scan(TRUE);  //使用单个键扫描。
+        
         
         //测试键盘缓冲区
         KeyVal = KeyBufR(TRUE, &KeyBuf);
+        if(Keypad.u32KeyStatus ^ KeyStatusTemp)
+            printf("ss~ss键值状态变化：0x%x--0x%x\r\n", Keypad.u32KeyStatus, KeyStatusTemp);
         if(KeyVal != 0x0000)        
             printf("|键盘缓冲区有数据：0x%x\r\n", KeyVal);
-        if(KeyVal & LONGPR_STATUS<<16)
+        if((KeyVal & (0xF<<16)) == (uint32_t)(LONGPR_STATUS<<16))
             printf("---长按事件：0x%x\r\n", KeyVal);
-        if(Keypad.u32KeyStatus ^ KeyStatusTemp)
-            printf("ss~ss键值状态变化：0x%x\r\n", Keypad.u32KeyStatus);
+        if((KeyVal & (0xF<<16)) == (uint32_t)(DOUBLECLICK_EVENT<<16))
+            printf("^^双击事件：0x%x\r\n", KeyVal);
+        
         KeyStatusTemp = Keypad.u32KeyStatus;
-//        KeyVal = KeyBufR(FALSE, &KeyBufRelease);
-//        if(KeyVal>>16 >=200U)
-//        {
-//            printf("检测到键盘释放，键值%d按下时间为：%dms\r\n", KeyVal & 0x00FF, KeyVal>>16);
-//            KeyVal = KeyBufR(TRUE, &KeyBufRelease);
-//        }
+       
+        bIsKey0 = (Keypad.u16ValOnce == KEY1_KEY0) || (KeyVal == KEY1_DOUBLE);  //组合：先KEY1后KEY0
+        //bIsKey1 = Keypad.u16ValSus == KEY0_KEY1;  //组合：KEY0+KEY1,无顺序要求
+        //按下Key0+Wkup，且Wkup后按下。
+        bIsWKUP = (Keypad.u16ValOnce == KEY0_WKUP) || (KeyVal == KEY0_DOUBLE);
+        //bIsKey0 = key0_Scan(TRUE);
+        bIsKey1 = key1_Scan(TRUE);  //使用单个键扫描。
         
         //bIsWKUP = WKUP_Scan(FALSE);
         if(bIsWKUP)

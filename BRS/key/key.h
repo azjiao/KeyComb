@@ -52,21 +52,27 @@ typedef enum {
 #define WKUP_CODE   WKUP?   KP_WKUP: 0x0000
 
 //按键防抖动滤波常数：ms
-#define KEYFILTIME   150U
-//同一个键连续按键的间隔时间，超过此时间才产生下一个键值，否则认为是同一次按键。此时间应大于防抖时间。
-#define KEYSPACETIME    500U
+#define KEYFILTIME   100U
 //按下同一键值超过KEYSPACETIME的时间是否产生重复键值录入缓冲区。TRUE:允许重复，FALSE：只算一次。
 #define ISREPEATKEY    FALSE
 
-//按键状态定义
+#if ISREPEATKEY
+//同一个键连续按键的间隔时间，超过此时间才产生下一个键值，否则认为是同一次按键。此时间应大于防抖时间。
+#define KEYSPACETIME    500U
+#endif
+
+//按键状态定义:必须只有4bit定义，共可以定义15种状态，已经足够了。
+//和键值状态组合时占据16-19bit，和0-16bit键值组合成复合键值。20-23bit是真正的键值状态.24-31bit是键值出现次数。
 //按下
-#define PRESS_STATUS    0x01
+#define PRESS_STATUS    0x1
 //键盘全释放为0
-#define RELEASE_STATUS    0x02
+#define RELEASE_STATUS    0x2
 //非序列键
-#define NOSEQ_STATUS   0x03
+#define NOSEQ_STATUS   0x3
 //长按
-#define LONGPR_STATUS   0x04
+#define LONGPR_STATUS   0x4
+//双击事件
+#define DOUBLECLICK_EVENT    0x05
 
 
 //长按状态检测时间:2000ms,即2s.
@@ -74,7 +80,8 @@ typedef enum {
 //序列按键独立键值最长按键时间：超过此时间认为不符合要求。
 #define KEYSEQPR_TIME    1000U
 //序列键：序列键间隔时间，只有在此时间内的序列键才认为是组合键，否则不认为是组合键。
-#define KEYSEQSPACE_TIME    2000U
+//该值根据用户体验，最好设置成1000U,即1s，太长会影响操作的响应，用户体验到迟钝。太短又会在序列按键（非双击）时对用户操作的速度的要求过高。
+#define KEYSEQSPACE_TIME    1000U
 
 //键盘结构
 typedef struct
@@ -84,7 +91,7 @@ typedef struct
     uint16_t u16KeypadStabTrg; //稳定键值突变。
     uint16_t u16DownTrg;  //键盘按下突变键,其实和u16ValOnce是同一逻辑。
     uint16_t u16UpTrg;  //键盘释放突变键
-    uint32_t u32KeyStatus; //键值状态，低24位是键值(低16位是本来的键值，bit16-bit23是事件)，高8位是状态。
+    uint32_t u32KeyStatus; //键值状态，低16位是键值,bit16-bit19是键值状态，低20位构成复合键值。bit20-23位是当前键值是按下还是释放，高8位保留。
 }KeypadType;
 extern KeypadType Keypad;
 
@@ -99,8 +106,6 @@ typedef struct
 } KeyBufType;
 //键盘按下缓冲区.
 extern KeyBufType KeyBuf;
-//键盘释放缓冲区，高16位是按键持续时间ms值(最大65535ms，约65s)，低16位是键盘值。
-extern KeyBufType KeyBufRelease;
 
 //板载Key初始化。
 void key_Init(void);
@@ -123,6 +128,8 @@ uint16_t genKeyCombVal(void);
 uint16_t keypadScan(void);
 //键值状态生成。
 void genKeyStatus(void);
+//状态机.
+void KeyStatusMachine(void);
 
 //键盘缓冲区FIFO 写操作。
 void KeyBufW(uint32_t KeyVal, bool bNext, KeyBufType* KeyBuf);
@@ -133,10 +140,16 @@ uint32_t KeyBufR(bool bNext, KeyBufType* KeyBuf);
 //根据项目需要定义所需按键组合，如果是单个按键就不必另外定义了。
 //组合键如果有顺序要求在用于时必须使用Keypad.u16ValOnce而不是Keypad.u16ValSus来判断.
 //KEY0-WKUP组合，且后按下WKUP。
+//FIXME:本宏定义值部分不能被()包围，因为是先用&&前面的部分和键值比较再判断“与”的。
 #define KEY0_WKUP    (KP_KEY0 + KP_WKUP) && (Keypad.u16DownTrg == KP_WKUP)
 //KEY1-KEY0组合，且后按下KEY0.
+//FIXME:本宏定义值部分不能被()包围，因为是先用&&前面的部分和键值比较再判断“与”的。
 #define KEY1_KEY0    (KP_KEY1 + KP_KEY0) && (Keypad.u16DownTrg == KP_KEY0)
 //KEY0-KEY1组合，无顺序要求。
-#define KEY0_KEY1    (KP_KEY0 + KP_KEY1)
+#define KEY0_KEY1    ((KP_KEY0 + KP_KEY1))
+//KEY0双击
+#define KEY0_DOUBLE    (KP_KEY0 | DOUBLECLICK_EVENT<<16)
+//KEY1双击
+#define KEY1_DOUBLE    (KP_KEY1 | DOUBLECLICK_EVENT<<16)
 
 #endif /* ifndef __KEY_H */

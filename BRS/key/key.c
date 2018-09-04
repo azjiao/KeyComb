@@ -14,7 +14,7 @@
 KeypadType Keypad;
 //声明键盘缓冲区结构变量。
 //如果定义为static则具有内部链接，其他文件将不能访问KeyBuf.
-KeyBufType KeyBuf, KeyBufRelease;
+KeyBufType KeyBuf;
 
 //板载Key初始化。
 void key_Init(void)
@@ -37,11 +37,9 @@ void key_Init(void)
 
     //键盘缓冲区初始化
     KeyBuf.u16Index = 0;
-    KeyBufRelease.u16Index = 0;
     for(int i = 0; i < KEYBUFSIZE; i++)
     {
-        KeyBuf.u32KeyBuffer[i] = 0x0000;
-        KeyBufRelease.u32KeyBuffer[i] = 0x0000;
+        KeyBuf.u32KeyBuffer[i] = 0x0;
     }
 }
 
@@ -153,15 +151,12 @@ uint16_t genKeyCombVal(void)
 //函数返回值为Keypad.u16DownTrg，是按下突变键,供简单独立按键使用。
 uint16_t keypadScan(void)
 {
-    static uint16_t u16KeypadRTTmp = 0x0000; //上一次实时键盘状态暂存值。
+    static uint16_t u16KeypadRTTmp = 0x0; //上一次实时键盘状态暂存值。
     uint16_t u16KeypadRT;  //本次实时按键状态值。
     uint16_t u16KeypadRTTrg;   //键实时发生沿变化。
-
-    static uint16_t u16KeypadStabValTemp = 0x0000; //上一次检出的键盘状态值。
-    //uint16_t u16KeypadStabTrg;  //键检出发生按下或释放标识：检测到沿变化。
-
+    static uint16_t u16KeypadStabValTemp = 0x0; //上一次检出的键盘状态值。
     //防抖动检测定时器。
-    static TimerType timer;  
+    static TimerType timer;
 
     //检测键盘实时状态值.
     u16KeypadRT = genKeyCombVal();
@@ -199,90 +194,43 @@ uint16_t keypadScan(void)
 
     //键值状态生成。
     genKeyStatus();
+    //状态机检测双击事件.
+    KeyStatusMachine();
     return Keypad.u16DownTrg;
 }
 
 //键值状态生成。
+//键值状态是32位无符号整数：低16位为键值原型，bit16-19是键值上个状态的记录，低20位合并成一个键值。
+//bit20-23位是键值当前存在（按下）和不存在(释放)的状态。PRESS_STATUS为按下RELEASE_STATUS是释放。
+//bit24-31保留。
+//键值状态有：发生按下、按下超过序列键时间、按下超过长按时间、发生释放、释放超过序列键间隔时间（键盘彻底无键值）。
 void genKeyStatus(void)
 {
-    //序列键按下超时定时器。
-    //static TimerType timer5;
-    //static bool bSeqPREnb = FALSE;  //序列键按下超时定时器使能。
-    
     #if ISREPEATKEY
     //按下同一个键检测出多个按键录入缓冲区的定时器。
     static TimerType timer2;
     //按下同一个键检测出多次按键录入缓冲区的标识。
     static bool bMultiFlag = FALSE;
     #endif
-    
+
     //按下键值暂存
-    static uint16_t u16ValSusTemp = 0x0000;
-    static bool bKeyAct = FALSE;  //键值稳定且不为0.    
+    /*static uint16_t u16ValSusTemp = 0x0;*/
+    static bool bKeyAct = FALSE;  //键值稳定且不为0.
     //键盘稳定键值期时间计时器。
     static TimerType timer3;
     static bool bReset = FALSE;  //键值稳定定时器复位。
-    
+
     //序列键间隔定时器。
     static TimerType timer4;
     static bool bSeqSpaceEnb = FALSE;  //序列键间隔定时使能。
-    
-    //如果键值为0，设置键值状态,键值维持之前的值。
-    if(!Keypad.u16ValSus)
-    {
-        Keypad.u32KeyStatus &= 0xFFFFFF;
-        Keypad.u32KeyStatus |= RELEASE_STATUS << 24;
-        bSeqSpaceEnb = TRUE;
-    }
-    else
-        bSeqSpaceEnb = FALSE;
-    TimeON(bSeqSpaceEnb, KEYSEQSPACE_TIME, &timer4);
-    //如果键盘键值为0时间超过KEYSEQSPACE_TIME定义的序列键间隔时间，设置键值状态清零复位。
-    if(timer4.bQ)
-    {
-        Keypad.u32KeyStatus = 0x00000000;
-        bSeqSpaceEnb = FALSE;
-    }
-
-    //键值稳定且有值。
-    bKeyAct = !Keypad.u16KeypadStabTrg && Keypad.u16ValSus;    
-    //当有键值突变时允许定时器工作。
-    if(Keypad.u16KeypadStabTrg)
-        bReset = FALSE;
-
-    //键值稳定持续时间检测
-    //特殊按键事件包含任何稳定的键盘值长按，无论是按下产生还是释放产生，但键值为0除外，也就是释放后键盘没有键值除外。
-    //键盘突变的键值存入暂存。
-    if(Keypad.u16KeypadStabTrg)
-        u16ValSusTemp = Keypad.u16ValSus;
-    //时间累计
-    TimeACC(bKeyAct && !bReset, &timer3);
-    
-    //以下检测两个时间使用同一个定时器：序列键超时和长按超时，定时较短的序列键超时必须位于长按超时前面被执行，这样才能保证定时较长的长按键超时会覆盖序列键超时。
-    //如果按键持续事件超过KEYSEQPR_TIME，则认为不是序列按键。
-    if(timer3.uEt >= KEYSEQPR_TIME)
-    {
-        Keypad.u32KeyStatus = Keypad.u16ValSus | (NOSEQ_STATUS << 24);
-    }
-    
-    //长按事件。
-    if(timer3.uEt >= LONGPR_TIME)
-    {
-        uint32_t KeyVal;
-        KeyVal = ((uint32_t)(LONGPR_STATUS << 16)) | u16ValSusTemp;
-        KeyBufW(KeyVal, TRUE, &KeyBuf);
-        //设置键值状态,存放在高8位。
-        Keypad.u32KeyStatus = KeyVal | (LONGPR_STATUS << 24);
-        bReset = TRUE;
-    }
 
 
-    #if ISREPEATKEY
     //键盘按下缓冲区写操作：
     //使用KeypadScan()扫描键盘，所以会产生粘连键组合为一个键值的情况，后续程序获取键盘缓冲区键值时可以处理此种情形。
     //一般用于单独按键来产生键值,即按下A释放再按其他键。不排除使用粘连组合的情形。
-    //如果一个键被按下的时间超过了KEYSPACETIME时间，则被认为是需要重复录入的键值。
 
+    //如果ISREPEATKEY为TRUE,一个键被按下的时间超过了KEYSPACETIME时间，则被认为是需要重复录入的键值。
+    #if ISREPEATKEY
     //当检出长按录入重复一次键值到缓冲区并使定时器复位后重新开放检测。
     if(!timer2.bQ && bMultiFlag)
         bMultiFlag = FALSE;
@@ -292,18 +240,158 @@ void genKeyStatus(void)
     //键盘缓冲区写:当按下时或长按把当前键盘值录入缓冲区。
     if(Keypad.u16DownTrg || timer2.bQ)
         KeyBufW(Keypad.u16ValSus, TRUE, &KeyBuf);
-
+    if(Keypad.u16DownTrg)
+    {
+            //设置键值状态：存放在16-23位。
+        Keypad.u32KeyStatus = Keypad.u16ValSus | (PRESS_STATUS << 16) | (PRESS_STATUS << 20);
+    }
     //当检出长按录入重复一次键值到缓冲区后关闭定时器。
     if(timer2.bQ)
         bMultiFlag = TRUE;
+
+    //如果ISREPEATEKEY为FLASE，一个键被按下无论多长时间都只录入一次键值。
     #else
         if(Keypad.u16DownTrg)
         {
             KeyBufW(Keypad.u16ValSus, TRUE, &KeyBuf);
-            //设置键值状态：存放在高8位。
-            Keypad.u32KeyStatus = Keypad.u16ValSus | (PRESS_STATUS << 24);
+            //设置键值状态：存放在16-23位。
+            Keypad.u32KeyStatus = Keypad.u16ValSus | (PRESS_STATUS << 16) | (PRESS_STATUS << 20);
         }
-    #endif  
+    #endif
+
+    //键值稳定且有值。
+    bKeyAct = !Keypad.u16KeypadStabTrg && Keypad.u16ValSus;
+    //当有键值突变时允许定时器工作。
+    if(Keypad.u16KeypadStabTrg)
+        bReset = FALSE;
+
+    //键值稳定持续时间检测
+    //特殊按键事件包含任何稳定的键盘值长按，无论是按下产生还是释放产生，但键值为0除外，也就是释放后键盘没有键值除外。
+    //时间累计
+    TimeACC(bKeyAct && !bReset, &timer3);
+
+    //以下检测两个时间使用同一个定时器：序列键超时和长按超时，定时较短的序列键超时必须位于长按超时前面被执行，这样才能保证定时较长的长按键超时会覆盖序列键超时。
+    //如果按键持续事件超过KEYSEQPR_TIME，则认为不是序列按键。
+    if(timer3.uEt >= KEYSEQPR_TIME)
+    {
+        //设置键值状态,存放在16-23位。
+        Keypad.u32KeyStatus = Keypad.u16ValSus | (NOSEQ_STATUS << 16) | (PRESS_STATUS << 20);
+    }
+
+    //长按事件。
+    if(timer3.uEt >= LONGPR_TIME)
+    {
+        uint32_t KeyVal;
+        KeyVal =  Keypad.u16ValSus| ((uint32_t)(LONGPR_STATUS << 16));
+        KeyBufW(KeyVal, TRUE, &KeyBuf);
+        //设置键值状态,存放在16-23位。
+        Keypad.u32KeyStatus = KeyVal | (PRESS_STATUS << 20);
+        bReset = TRUE;
+    }
+
+    //如果键值为0且键值状态处于非0状态，设置键值状态,键值维持之前的值。
+    if(!Keypad.u16ValSus && Keypad.u32KeyStatus)
+    {
+        Keypad.u32KeyStatus &= 0xFFFFF; //保留低20位数据。
+        Keypad.u32KeyStatus |= RELEASE_STATUS << 20;
+        bSeqSpaceEnb = TRUE;        
+    }
+    else
+        bSeqSpaceEnb = FALSE;
+    TimeON(bSeqSpaceEnb, KEYSEQSPACE_TIME, &timer4);
+    //如果键盘键值为0时间超过KEYSEQSPACE_TIME定义的序列键间隔时间，设置键值状态清零复位。
+    if(timer4.bQ)
+    {
+        Keypad.u32KeyStatus = 0x0;
+        bSeqSpaceEnb = FALSE;           
+    }     
+
+}
+
+//状态机.
+//双击数据结构：支持单键双击，当然也支持多键双击，不过恐怕你操作不过来。
+struct {
+        uint8_t u8State; //状态机状态。
+        uint32_t uiKeyValOld; //上次键值。
+        uint8_t u8Count;  //完整状态次数。
+    }DoubleClick;
+
+void KeyStatusMachine(void)
+{
+    uint16_t u16curKeyStatus; //当前键值状态。
+    uint32_t uicurKeyVal;  //当前键值。
+    static uint32_t u32KeyStatusOld = 0x0;  //上次键值状态字。
+
+    //如果发生键值状态改变才执行状态机。
+    if(u32KeyStatusOld ^ Keypad.u32KeyStatus)
+    {
+        uicurKeyVal = (Keypad.u32KeyStatus & 0xFFFFF);  //取得当前键值:20位复合键值。
+        u16curKeyStatus = (Keypad.u32KeyStatus & 0xFFF00000)>>20; //取得当前键值状态.
+
+        //判断第一个状态起始。
+        if((DoubleClick.uiKeyValOld == 0x0) && (u16curKeyStatus == PRESS_STATUS))
+        {
+            DoubleClick.uiKeyValOld = uicurKeyVal;
+            DoubleClick.u8Count = 0x0;
+            DoubleClick.u8State = 0x1;
+        }
+        //判断结束状态。
+        //除了完成双击或检测到非双击自动复位状态外，当键盘检测到无键值状态（无键值且持续超过序列键检测时间）自动复位。
+        if(Keypad.u32KeyStatus == 0x0)
+        {
+            DoubleClick.uiKeyValOld = 0x0;
+            DoubleClick.u8Count = 0x0;
+            DoubleClick.u8State = 0x0;
+        }
+
+        switch(DoubleClick.u8State){
+            case 0x01:
+                //判断第一个状态
+                if(!(uicurKeyVal ^ DoubleClick.uiKeyValOld) && (u16curKeyStatus == PRESS_STATUS))
+                {
+                    DoubleClick.uiKeyValOld = uicurKeyVal;
+                    DoubleClick.u8State++;
+                }
+                //否则就是键值改变，双击无效。
+                else {
+                    //事件检测结束，复位状态字。
+                    DoubleClick.uiKeyValOld = 0x0;
+                    DoubleClick.u8Count = 0x0;
+                    DoubleClick.u8State = 0x0;
+                }
+                break;
+
+            case 0x02:
+                //双击检测到第一个状态后开始第二状态检测.
+                //检测是否是释放状态:键值一致且键值状态当前是释放。
+                if(!(uicurKeyVal ^ DoubleClick.uiKeyValOld) && u16curKeyStatus == RELEASE_STATUS)
+                {
+                    DoubleClick.uiKeyValOld = uicurKeyVal;
+                    DoubleClick.u8Count++;
+                    DoubleClick.u8State = 0x1;
+                    if(DoubleClick.u8Count == 0x02)
+                    {
+                        //把双击事件录入缓冲区。
+                        uicurKeyVal &= 0xFFFF;  //取得键值原码。
+                        KeyBufW(uicurKeyVal | DOUBLECLICK_EVENT << 16, TRUE, &KeyBuf);
+                        //事件检测结束，复位状态字。
+                        //为了不迟滞用户体验，即检测双击又检测三击最好另外设立三击状态检测字,不和双击共用。
+                        DoubleClick.uiKeyValOld = 0x0;
+                        DoubleClick.u8Count = 0x0;
+                        DoubleClick.u8State = 0x0;
+                    }
+                }
+                //否则，是按键超时。
+                else {
+                    //事件检测结束，复位状态字。
+                    DoubleClick.uiKeyValOld = 0x0;
+                    DoubleClick.u8Count = 0x0;
+                    DoubleClick.u8State = 0x0;
+                }
+                break;
+        }
+    }
+    u32KeyStatusOld = Keypad.u32KeyStatus;    
 }
 
 //键盘缓冲区FIFO 写操作。
