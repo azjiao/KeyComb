@@ -6,9 +6,10 @@
  * WK_UP:接到PA0端口，下拉输入；
  */
 #include "stm32f10x.h"
-#include "key.h"
-#include "delay.h"
-#include "stdio.h"
+//#include "key.h"
+//#include "delay.h"
+//#include "stdio.h"
+#include "dev.h"
 
 //声明键盘结构变量。
 KeypadType Keypad;
@@ -18,23 +19,16 @@ KeyBufType KeyBuf;
 
 //板载Key初始化。
 void key_Init(void)
-{
-    GPIO_InitTypeDef GPIO_InitStruct; //声明初始化数据结构。
-
+{ 
     //GPIOA和GPIOE时钟使能。
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOE,ENABLE);
 
-    //KEY0和KEY1设置相同。
-    GPIO_InitStruct.GPIO_Pin = (GPIO_Pin_4 | GPIO_Pin_3);
-    GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPU; //上拉输入模式。
-    GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-    //WK_UP设置。
-    GPIO_InitStruct.GPIO_Pin = GPIO_Pin_0;
-    GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IPD; //下拉输入模式。
-    GPIO_Init(GPIOA, &GPIO_InitStruct);
-
+    //使用二次封装的GPIO初始化函数。
+    //对于输入方式，频率参数无用。    
+    My_GPIO_Init_Macro(GPIOE, (GPIO_Pin_4 | GPIO_Pin_3), GPIO_Mode_IPU); //KEY0和KEY1初始化设置相同,上拉输入模式。
+    My_GPIO_Init_Macro(GPIOA, GPIO_Pin_0, GPIO_Mode_IPD); //WK_UP初始化设置,下拉输入模式。
+    
     //键盘缓冲区初始化
     KeyBuf.u16Index = 0;
     for(int i = 0; i < KEYBUFSIZE; i++)

@@ -47,11 +47,10 @@ int main(void)
     {
         bool bIsKey0;
         bool bIsKey1;
-        bool bIsWKUP;
+        bool bIsWKUP;  
         
         keypadScan();
-        
-        
+               
         //≤‚ ‘º¸≈Ãª∫≥Â«¯
         KeyVal = KeyBufR(TRUE, &KeyBuf);
         if(Keypad.u32KeyStatus ^ KeyStatusTemp)
