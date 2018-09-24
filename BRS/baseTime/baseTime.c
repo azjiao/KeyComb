@@ -103,14 +103,14 @@ void Time7_Init2us(u16 u16Ptus)
 
 // TIM7初始化为所需ms：固定定时计数器时钟CK_CLK为10kHz,即计数器一个计数时间为0.1ms.
 // 系统初始化时APB1分频值为2，为36MHz,则TIM6Clk为72MHz.
-// 设置PSC为7190即可以使TIM7计数时钟为10kHz.
+// 设置PSC为7199即可以使TIM7计数时钟为10kHz.
 // u16Ptus为所需定时中断的ms值。
 void Time7_Init2ms(u16 u16Ptms)
 {
     u16 u16ARR;
     // 把u16Ptms转换为自动重装载寄存器所需的值。
     u16ARR = u16Ptms * 10 - 1;
-    Time7_Init(u16ARR, (u16)7190);
+    Time7_Init(u16ARR, (u16)7199);
 }
 
 /*
